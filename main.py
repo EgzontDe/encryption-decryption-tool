@@ -146,9 +146,18 @@ def save_file(filename, data):
 
 
 def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None):
-    block = open_and_read_file(read_filename)
-    header = block[:54]
-    body = block[54:]
+    file_data = open_and_read_file(read_filename)
+    
+    # Check if this is a BMP file (has a 54-byte header)
+    is_bmp = False
+    if len(file_data) > 54 and file_data[:2] == b'BM':
+        is_bmp = True
+        header = file_data[:54]
+        data_to_encrypt = file_data[54:]
+    else:
+        # For non-BMP files, encrypt the entire file
+        header = b''
+        data_to_encrypt = file_data
     
     # Log encryption information for security audit
     log_file = f"{save_filename}.log"
@@ -156,22 +165,30 @@ def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None
         log.write(f"Encryption mode: {mode}\n")
         log.write(f"Original file: {read_filename}\n")
         log.write(f"Encrypted file: {save_filename}\n")
+        log.write(f"File type: {'BMP' if is_bmp else 'Other'}\n")
         log.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
     
+    # Metadata for file type detection during decryption
+    metadata = bytearray(8)  # 8 bytes of metadata
+    if is_bmp:
+        metadata[0] = 1  # Flag for BMP file
+    else:
+        metadata[0] = 0  # Flag for other file types
+    
     if mode == AES.MODE_CTR:
-        ciphertext = cipher.encrypt(body)
-        result = header + nonce + ciphertext
+        ciphertext = cipher.encrypt(data_to_encrypt)
+        result = header + metadata + nonce + ciphertext
     elif mode == AES.MODE_CBC:
-        padded_body = pad(body, AES.block_size)
-        ciphertext = cipher.encrypt(padded_body)
-        result = header + iv + ciphertext
+        padded_data = pad(data_to_encrypt, AES.block_size)
+        ciphertext = cipher.encrypt(padded_data)
+        result = header + metadata + iv + ciphertext
     elif mode == AES.MODE_GCM:
-        ciphertext, tag = cipher.encrypt_and_digest(body)
-        result = header + nonce + tag + ciphertext
+        ciphertext, tag = cipher.encrypt_and_digest(data_to_encrypt)
+        result = header + metadata + nonce + tag + ciphertext
     else:  # AES.MODE_ECB
-        padded_body = pad(body, AES.block_size)
-        ciphertext = cipher.encrypt(padded_body)
-        result = header + ciphertext
+        padded_data = pad(data_to_encrypt, AES.block_size)
+        ciphertext = cipher.encrypt(padded_data)
+        result = header + metadata + ciphertext
 
     # Create a checksum of the encrypted data for integrity verification
     checksum = hashlib.sha256(result).digest()
@@ -184,7 +201,6 @@ def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None
 def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
     try:
         block = open_and_read_file(read_filename)
-        header = block[:54]  # header size is fixed at 54 bytes
         
         # Verify file integrity with checksum
         checksum_file = f"{read_filename}.checksum"
@@ -196,34 +212,61 @@ def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
             if calculated_checksum != stored_checksum:
                 messagebox.showwarning("Security Warning", "File checksum does not match! The file may have been tampered with.")
         
+        # Read metadata to determine file type
+        is_bmp = False
+        if len(block) > 2 and block[:2] == b'BM':  # Check for BMP signature
+            is_bmp = True
+            header = block[:54]
+            metadata_start = 54
+        else:
+            header = b''
+            metadata_start = 0
+        
+        # Read metadata block (8 bytes)
+        metadata = block[metadata_start:metadata_start+8]
+        
+        # Override detection if metadata explicitly says it's a BMP
+        if len(metadata) > 0 and metadata[0] == 1:
+            is_bmp = True
+        elif len(metadata) > 0 and metadata[0] == 0:
+            is_bmp = False
+        
+        # Calculate offsets based on file type
+        data_start = metadata_start + 8  # Skip 8 bytes for metadata
+        
         if mode == AES.MODE_CTR:
-            nonce = block[54:62]  # Extract the nonce (8 bytes)
-            encrypted_data = block[62:]  # The rest is encrypted data
+            nonce = block[data_start:data_start+8]  # Extract the nonce (8 bytes)
+            encrypted_data = block[data_start+8:]  # The rest is encrypted data
             ctr = Counter.new(64, prefix=nonce)
             cipher = AES.new(key, mode, counter=ctr)  # Re-initialize cipher with correct counter
-            decrypted_body = cipher.decrypt(encrypted_data)
+            decrypted_data = cipher.decrypt(encrypted_data)
         elif mode == AES.MODE_CBC:
-            iv = block[54:70]  # Extract the IV (16 bytes)
-            encrypted_data = block[70:]
+            iv = block[data_start:data_start+16]  # Extract the IV (16 bytes)
+            encrypted_data = block[data_start+16:]
             cipher = AES.new(key, mode, iv=iv)  # Re-initialize cipher with correct IV
-            decrypted_body = cipher.decrypt(encrypted_data)
-            decrypted_body = unpad(decrypted_body, AES.block_size)
+            decrypted_data = cipher.decrypt(encrypted_data)
+            decrypted_data = unpad(decrypted_data, AES.block_size)
         elif mode == AES.MODE_GCM:
-            nonce = block[54:70]  # Extract the nonce (16 bytes)
-            tag = block[70:86]  # Extract the tag (16 bytes)
-            encrypted_data = block[86:]
+            nonce = block[data_start:data_start+16]  # Extract the nonce (16 bytes)
+            tag = block[data_start+16:data_start+32]  # Extract the tag (16 bytes)
+            encrypted_data = block[data_start+32:]
             cipher = AES.new(key, mode, nonce=nonce)
             try:
-                decrypted_body = cipher.decrypt_and_verify(encrypted_data, tag)
+                decrypted_data = cipher.decrypt_and_verify(encrypted_data, tag)
             except ValueError:
                 messagebox.showerror("Security Error", "Authentication failed! The file has been tampered with.")
                 return False
         else:  # AES.MODE_ECB
-            encrypted_data = block[54:]
-            decrypted_body = cipher.decrypt(encrypted_data)
-            decrypted_body = unpad(decrypted_body, AES.block_size)
+            encrypted_data = block[data_start:]
+            decrypted_data = cipher.decrypt(encrypted_data)
+            decrypted_data = unpad(decrypted_data, AES.block_size)
 
-        result = header + decrypted_body
+        # Combine header (if BMP) with decrypted data
+        if is_bmp and len(header) == 54:
+            result = header + decrypted_data
+        else:
+            result = decrypted_data
+            
         save_file(decrypted_filename, result)
         
         # Log decryption information for security audit
@@ -232,6 +275,7 @@ def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
             log.write(f"Decryption mode: {mode}\n")
             log.write(f"Encrypted file: {read_filename}\n")
             log.write(f"Decrypted file: {decrypted_filename}\n")
+            log.write(f"File type: {'BMP' if is_bmp else 'Other'}\n")
             log.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
 
         return True
@@ -268,12 +312,16 @@ def main_gui():
             return
 
         mode = mode_mapping[mode_choice]
-        encrypted_filename = f"encrypted_{filename_mapping[mode_choice]}.bmp"
-
+        
         read_filename = filedialog.askopenfilename(title="Select the file to encrypt",
-                                                   filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")])
+                                                   filetypes=[("All files", "*.*"), ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif"), 
+                                                            ("Document files", "*.pdf *.doc *.docx *.txt")])
         if not read_filename:
             return  # cancelled
+            
+        # Get the original file extension and generate encrypted filename
+        file_base, file_ext = os.path.splitext(read_filename)
+        encrypted_filename = f"encrypted_{filename_mapping[mode_choice]}{file_ext}"
 
         key = load_key()
         if key is None:
@@ -308,9 +356,9 @@ def main_gui():
             return
 
         mode = mode_mapping[mode_choice]
-        decrypted_filename = f"decrypted_file.bmp"
+        
         read_filename = filedialog.askopenfilename(title="Select the file to Decrypt",
-                                                   filetypes=[("All files", "*.*")])
+                                                   filetypes=[("All files", "*.*"), ("Encrypted files", "*.enc")])
         if not read_filename:
             return
 
@@ -333,6 +381,21 @@ def main_gui():
                     return
         except:
             pass
+
+        # Get the original file extension and generate decrypted filename
+        file_base, file_ext = os.path.splitext(read_filename)
+        if file_ext.lower() == '.enc':
+            # For .enc files, try to determine original extension from the filename
+            orig_ext = '.bin'  # Default extension if we can't determine
+            # Look for known extensions in the filename
+            for ext in ['.txt', '.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.bmp', '.gif']:
+                if ext in file_base.lower():
+                    orig_ext = ext
+                    break
+        else:
+            orig_ext = file_ext  # Keep the same extension
+            
+        decrypted_filename = f"decrypted_file{orig_ext}"
 
         key = load_key()
         if key is None:
