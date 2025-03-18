@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  encryption-app:
+    build: .
+    container_name: encryption-tool
+    volumes:
+      - ./keys:/app/keys
+      - ./data:/app/data
+      - ${DISPLAY}:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY}
+    network_mode: "host"  # For X11 forwarding
+    restart: unless-stopped

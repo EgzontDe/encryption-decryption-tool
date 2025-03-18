@@ -1,0 +1,43 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Encryption files and directories
+keys/
+data/
+*.enc
+*.pem
+*.key
+*.sig
+*.meta
+
+# Generated files
+decrypted_*
+encrypted_*
+*.checksum
+*.log
+
+# Docker
+.docker/
+docker-data/
+
+# Other
+.DS_Store
+.env
