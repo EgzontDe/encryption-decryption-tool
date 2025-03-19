@@ -4,7 +4,6 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, simpledialog
 import hashlib
-import getpass
 import datetime
 
 from Crypto.Cipher import AES
@@ -20,61 +19,59 @@ SALT_PATH = "keys/salt"
 CONFIG_PATH = "config"
 
 
-# Function to generate random Key with password protection
 def generate_key(key_size=32):  # Default to AES-256
     try:
         if not os.path.exists("keys"):
             os.makedirs("keys")
-            
+
         # Generate a random salt
         salt = get_random_bytes(16)
         with open(SALT_PATH, "wb") as salt_file:
             salt_file.write(salt)
-            
+
         # Get password from user
         password_window = tk.Toplevel()
         password_window.title("Password Protection")
         password_window.geometry("300x150")
-        
+
         password_var = tk.StringVar()
         confirm_var = tk.StringVar()
-        
+
         ttk.Label(password_window, text="Enter password:").pack(pady=5)
         password_entry = ttk.Entry(password_window, show="*", textvariable=password_var)
         password_entry.pack(pady=5)
-        
+
         ttk.Label(password_window, text="Confirm password:").pack(pady=5)
         confirm_entry = ttk.Entry(password_window, show="*", textvariable=confirm_var)
         confirm_entry.pack(pady=5)
-        
+
         def submit_password():
             if password_var.get() == confirm_var.get():
                 if len(password_var.get()) < 8:
                     messagebox.showerror("Error", "Password must be at least 8 characters")
                     return
-                    
+
                 # Generate key using PBKDF2
                 password = password_var.get().encode()
                 key = PBKDF2(password, salt, dkLen=key_size, count=1000000)  # High iteration count for security
-                
+
                 save_key(key)
-                
+
                 # Save key size to config
                 with open(CONFIG_PATH, "w") as config:
                     config.write(f"KEY_SIZE={key_size}\n")
-                    
+
                 messagebox.showinfo("Success", "Key generated successfully!")
                 password_window.destroy()
             else:
                 messagebox.showerror("Error", "Passwords do not match")
-        
+
         ttk.Button(password_window, text="Generate Key", command=submit_password).pack(pady=10)
-        
-        # Make sure the password window is modal
+
         password_window.transient(password_window.master)
         password_window.grab_set()
         password_window.wait_window()
-        
+
     except Exception as e:
         messagebox.showerror("Error", f"Failed to generate key: {str(e)}")
 
@@ -86,16 +83,15 @@ def save_key(key):
 
 def load_key(password=None):
     if password is None:
-        # Get password from user
         password = tk.simpledialog.askstring("Password", "Enter key password:", show="*")
         if not password:
             return None
-    
+
     try:
-        # Load salt and derive key using PBKDF2
+
         with open(SALT_PATH, "rb") as salt_file:
             salt = salt_file.read()
-            
+
         # Get key size from config
         key_size = 32  # Default to AES-256
         if os.path.exists(CONFIG_PATH):
@@ -104,13 +100,12 @@ def load_key(password=None):
                     if line.startswith("KEY_SIZE="):
                         key_size = int(line.strip().split("=")[1])
                         break
-        
+
         derived_key = PBKDF2(password.encode(), salt, dkLen=key_size, count=1000000)
-        
-        # Verify against stored key
+
         with open(SECRET_KEY_PATH, "rb") as key_file:
             stored_key = key_file.read()
-            
+
         if derived_key == stored_key:
             return derived_key
         else:
@@ -149,15 +144,14 @@ def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None
     block = open_and_read_file(read_filename)
     header = block[:54]
     body = block[54:]
-    
-    # Log encryption information for security audit
+
     log_file = f"{save_filename}.log"
     with open(log_file, "w") as log:
         log.write(f"Encryption mode: {mode}\n")
         log.write(f"Original file: {read_filename}\n")
         log.write(f"Encrypted file: {save_filename}\n")
         log.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
-    
+
     if mode == AES.MODE_CTR:
         ciphertext = cipher.encrypt(body)
         result = header + nonce + ciphertext
@@ -177,7 +171,7 @@ def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None
     checksum = hashlib.sha256(result).digest()
     with open(f"{save_filename}.checksum", "wb") as f:
         f.write(checksum)
-        
+
     save_file(save_filename, result)
 
 
@@ -185,17 +179,18 @@ def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
     try:
         block = open_and_read_file(read_filename)
         header = block[:54]  # header size is fixed at 54 bytes
-        
-        # Verify file integrity with checksum
+
         checksum_file = f"{read_filename}.checksum"
         if os.path.exists(checksum_file):
             with open(checksum_file, "rb") as f:
                 stored_checksum = f.read()
-            
+
             calculated_checksum = hashlib.sha256(block).digest()
             if calculated_checksum != stored_checksum:
-                messagebox.showwarning("Security Warning", "File checksum does not match! The file may have been tampered with.")
-        
+                messagebox.showwarning(
+                    "Security Warning", "File checksum does not match! The file may have been tampered with."
+                )
+
         if mode == AES.MODE_CTR:
             nonce = block[54:62]  # Extract the nonce (8 bytes)
             encrypted_data = block[62:]  # The rest is encrypted data
@@ -225,7 +220,7 @@ def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
 
         result = header + decrypted_body
         save_file(decrypted_filename, result)
-        
+
         # Log decryption information for security audit
         log_file = f"{decrypted_filename}.log"
         with open(log_file, "w") as log:
@@ -270,15 +265,16 @@ def main_gui():
         mode = mode_mapping[mode_choice]
         encrypted_filename = f"encrypted_{filename_mapping[mode_choice]}.bmp"
 
-        read_filename = filedialog.askopenfilename(title="Select the file to encrypt",
-                                                   filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")])
+        read_filename = filedialog.askopenfilename(
+            title="Select the file to encrypt", filetypes=[("BMP files", "*.bmp"), ("All files", "*.*")]
+        )
         if not read_filename:
             return  # cancelled
 
         key = load_key()
         if key is None:
-            return  # Password entry was cancelled or incorrect
-        
+            return
+
         if mode == AES.MODE_CTR:
             nonce = get_random_bytes(8)  # Generate a new nonce for each encryption
             ctr = Counter.new(64, prefix=nonce)
@@ -295,7 +291,7 @@ def main_gui():
         else:  # AES.MODE_ECB
             c_encrypt = init_cipher(key, mode)
             encrypt_file(c_encrypt, read_filename, encrypted_filename, mode)
-        
+
         open_file(encrypted_filename)
 
         messagebox.showinfo("Success", "Encryption Successful!")
@@ -309,12 +305,10 @@ def main_gui():
 
         mode = mode_mapping[mode_choice]
         decrypted_filename = f"decrypted_file.bmp"
-        read_filename = filedialog.askopenfilename(title="Select the file to Decrypt",
-                                                   filetypes=[("All files", "*.*")])
+        read_filename = filedialog.askopenfilename(title="Select the file to Decrypt", filetypes=[("All files", "*.*")])
         if not read_filename:
             return
 
-        # Try to determine the encryption mode from the file extension or name pattern
         try:
             if "_ECB" in read_filename:
                 detected_mode = "ECB"
@@ -326,28 +320,30 @@ def main_gui():
                 detected_mode = "GCM"
             else:
                 detected_mode = filename_mapping[mode_choice]
-                
+
             if detected_mode != filename_mapping[mode_choice]:
-                if not messagebox.askyesno("Mode Mismatch Warning", 
-                                        f"The file appears to be encrypted with {detected_mode}, but you selected {filename_mapping[mode_choice]}. Continue anyway?"):
+                if not messagebox.askyesno(
+                    "Mode Mismatch Warning",
+                    f"The file appears to be encrypted with {detected_mode}, but you selected {filename_mapping[mode_choice]}. Continue anyway?",
+                ):
                     return
         except:
             pass
 
         key = load_key()
         if key is None:
-            return  # Password entry was cancelled or incorrect
-            
+            return
+
         # Set up decryption parameters based on mode
         if mode == AES.MODE_CTR:
             # For CTR mode, nonce is extracted during decryption
             c_decrypt = init_cipher(key, mode, counter=Counter.new(64))  # Will be reinitialized during decryption
         elif mode == AES.MODE_CBC:
             # For CBC mode, IV is extracted during decryption
-            c_decrypt = AES.new(key, mode, iv=b'\0'*16)  # Will be reinitialized during decryption
+            c_decrypt = AES.new(key, mode, iv=b"\0" * 16)  # Will be reinitialized during decryption
         elif mode == AES.MODE_GCM:
             # For GCM mode, nonce is extracted during decryption
-            c_decrypt = AES.new(key, mode, nonce=b'\0'*16)  # Will be reinitialized during decryption
+            c_decrypt = AES.new(key, mode, nonce=b"\0" * 16)  # Will be reinitialized during decryption
         else:  # AES.MODE_ECB
             c_decrypt = init_cipher(key, mode)
 
@@ -362,8 +358,10 @@ def main_gui():
         info_window = tk.Toplevel()
         info_window.title("Security Information")
         info_window.geometry("500x400")
-        
-        info_text = ttk.Label(info_window, text="""Security Features:
+
+        info_text = ttk.Label(
+            info_window,
+            text="""Security Features:
         
 1. Password-Protected Keys:
    - AES-256 encryption by default
@@ -390,32 +388,35 @@ Best Practices:
    - Use strong passwords (minimum 8 characters)
    - Regularly rotate encryption keys
    - Keep private keys secure
-        """, justify="left", wraplength=480)
+        """,
+            justify="left",
+            wraplength=480,
+        )
         info_text.pack(padx=10, pady=10, expand=True, fill="both")
-        
+
         ttk.Button(info_window, text="Close", command=info_window.destroy).pack(pady=10)
 
     root = tk.Tk()
     root.title("Advanced Encryption / Decryption Tool")
-    style = Style(theme='superhero')
+    style = Style(theme="superhero")
 
     app_frame = ttk.Frame(root, padding="50 30 50 30")
     app_frame.grid(column=0, row=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=10)
     app_frame.columnconfigure(0, weight=1)
-    
+
     # Key size selection
     key_size_frame = ttk.LabelFrame(app_frame, text="Key Size")
     key_size_frame.grid(column=0, row=0, columnspan=2, sticky=tk.E + tk.W, pady=5)
-    
+
     key_size_var = tk.IntVar(value=32)  # Default to AES-256
     ttk.Radiobutton(key_size_frame, text="AES-128 (16 bytes)", variable=key_size_var, value=16).pack(anchor="w", padx=5)
     ttk.Radiobutton(key_size_frame, text="AES-192 (24 bytes)", variable=key_size_var, value=24).pack(anchor="w", padx=5)
     ttk.Radiobutton(key_size_frame, text="AES-256 (32 bytes)", variable=key_size_var, value=32).pack(anchor="w", padx=5)
-    
+
     # Button to generate key with selected key size
-    btn_generate_key_iv = ttk.Button(app_frame, text="Generate Key", 
-                                     command=lambda: generate_key(key_size_var.get()),
-                                     style='info.Outline.TButton')
+    btn_generate_key_iv = ttk.Button(
+        app_frame, text="Generate Key", command=lambda: generate_key(key_size_var.get()), style="info.Outline.TButton"
+    )
     btn_generate_key_iv.grid(column=0, row=1, columnspan=2, sticky=tk.E + tk.W, pady=10)
 
     # Encryption mode selection
@@ -424,60 +425,67 @@ Best Practices:
         "ECB (Electronic Codebook)": "1",
         "CTR (Counter)": "2",
         "CBC (Cipher Block Chaining)": "3",
-        "GCM (Galois/Counter Mode)": "4"
+        "GCM (Galois/Counter Mode)": "4",
     }
 
     mode_frame = ttk.LabelFrame(app_frame, text="Encryption Mode")
     mode_frame.grid(column=0, row=2, columnspan=2, sticky=tk.E + tk.W, pady=10)
-    
-    mode_mapping = {
-        "1": AES.MODE_ECB,
-        "2": AES.MODE_CTR,
-        "3": AES.MODE_CBC,
-        "4": AES.MODE_GCM
-    }
 
-    filename_mapping = {
-        "1": "ECB",
-        "2": "CTR",
-        "3": "CBC",
-        "4": "GCM"
-    }
+    mode_mapping = {"1": AES.MODE_ECB, "2": AES.MODE_CTR, "3": AES.MODE_CBC, "4": AES.MODE_GCM}
+
+    filename_mapping = {"1": "ECB", "2": "CTR", "3": "CBC", "4": "GCM"}
 
     for idx, (mode, val) in enumerate(aes_mode_options.items()):
         rb_mode = ttk.Radiobutton(mode_frame, text=mode, variable=aes_mode_var, value=val)
         rb_mode.pack(anchor="w", padx=5, pady=2)
-        
-        # Add mode descriptions
+
         if val == "1":
-            ttk.Label(mode_frame, text="    Simple but less secure, not recommended for sensitive data", 
-                     font=("Helvetica", 8), foreground="gray").pack(anchor="w", padx=25, pady=0)
+            ttk.Label(
+                mode_frame,
+                text="    Simple but less secure, not recommended for sensitive data",
+                font=("Helvetica", 8),
+                foreground="gray",
+            ).pack(anchor="w", padx=25, pady=0)
         elif val == "2":
-            ttk.Label(mode_frame, text="    Stream cipher mode, good for large files", 
-                     font=("Helvetica", 8), foreground="gray").pack(anchor="w", padx=25, pady=0)
+            ttk.Label(
+                mode_frame,
+                text="    Stream cipher mode, good for large files",
+                font=("Helvetica", 8),
+                foreground="gray",
+            ).pack(anchor="w", padx=25, pady=0)
         elif val == "3":
-            ttk.Label(mode_frame, text="    Block cipher with initialization vector for better security", 
-                     font=("Helvetica", 8), foreground="gray").pack(anchor="w", padx=25, pady=0)
+            ttk.Label(
+                mode_frame,
+                text="    Block cipher with initialization vector for better security",
+                font=("Helvetica", 8),
+                foreground="gray",
+            ).pack(anchor="w", padx=25, pady=0)
         elif val == "4":
-            ttk.Label(mode_frame, text="    Authenticated encryption, provides integrity protection (recommended)", 
-                     font=("Helvetica", 8), foreground="gray").pack(anchor="w", padx=25, pady=0)
+            ttk.Label(
+                mode_frame,
+                text="    Authenticated encryption, provides integrity protection (recommended)",
+                font=("Helvetica", 8),
+                foreground="gray",
+            ).pack(anchor="w", padx=25, pady=0)
 
     # Action buttons
     btn_frame = ttk.Frame(app_frame)
     btn_frame.grid(column=0, row=3, columnspan=2, sticky=tk.E + tk.W, pady=10)
-    
-    btn_encrypt = ttk.Button(btn_frame, text="Encrypt File", command=on_encrypt, style='success.TButton')
+
+    btn_encrypt = ttk.Button(btn_frame, text="Encrypt File", command=on_encrypt, style="success.TButton")
     btn_encrypt.pack(side="left", padx=5, pady=10, expand=True, fill="x")
 
-    btn_decrypt = ttk.Button(btn_frame, text="Decrypt File", command=on_decrypt, style='info.TButton')
+    btn_decrypt = ttk.Button(btn_frame, text="Decrypt File", command=on_decrypt, style="info.TButton")
     btn_decrypt.pack(side="left", padx=5, pady=10, expand=True, fill="x")
 
-    btn_security_info = ttk.Button(app_frame, text="Security Information", command=show_security_info, 
-                                 style='secondary.Outline.TButton')
+    btn_security_info = ttk.Button(
+        app_frame, text="Security Information", command=show_security_info, style="secondary.Outline.TButton"
+    )
     btn_security_info.grid(column=0, row=4, columnspan=1, sticky=tk.E + tk.W, pady=5)
-    
-    btn_asymmetric = ttk.Button(app_frame, text="Asymmetric Encryption", command=launch_asymmetric_window,
-                                style='primary.Outline.TButton')
+
+    btn_asymmetric = ttk.Button(
+        app_frame, text="Asymmetric Encryption", command=launch_asymmetric_window, style="primary.Outline.TButton"
+    )
     btn_asymmetric.grid(column=1, row=4, columnspan=1, sticky=tk.E + tk.W, pady=5)
 
     lbl_result = ttk.Label(app_frame, text="")
@@ -488,7 +496,6 @@ Best Practices:
     app_frame.columnconfigure(0, weight=1)
     app_frame.columnconfigure(1, weight=1)
 
-    # Set the first mode as default
     aes_mode_var.set("4")  # Default to GCM (most secure)
 
     root.mainloop()
