@@ -12,7 +12,6 @@ from pathlib import Path
 from src.crypto.key_manager import generate_key, load_key
 from src.crypto.symmetric import init_cipher, encrypt_file, decrypt_file
 from src.crypto.utils import open_file, setup_logging, get_app_config, save_app_config
-from src.gui.launcher import launch_launcher
 from src.utils.file_manager import ensure_directories
 
 # Set up logging
@@ -26,7 +25,15 @@ def main():
     
     # Check if launcher should be shown
     if len(sys.argv) > 1 and sys.argv[1] == "--launcher":
-        launch_launcher()
+        # Import launcher from root directory
+        import importlib.util
+        import os
+        
+        launcher_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "launcher.py")
+        spec = importlib.util.spec_from_file_location("launcher", launcher_path)
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        launcher.main()
         return
     
     # Otherwise launch symmetric encryption GUI
