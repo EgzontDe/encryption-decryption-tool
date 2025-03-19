@@ -2,7 +2,7 @@
 
 ## Description
 
-This advanced encryption toolkit, designed and implemented by Egzont Demiri, provides comprehensive tools for secure file encryption, decryption, and management. The application offers both symmetric and asymmetric encryption options with enhanced security features and an improved user interface.
+This advanced encryption toolkit provides comprehensive tools for secure file encryption, decryption, and management. The application offers both symmetric and asymmetric encryption options with enhanced security features and an improved user interface.
 
 ## Enhanced Features
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ### Standard Installation
 1. Clone the repository
 2. Install the dependencies: `pip install -r requirements.txt`
-3. Run the launcher: `python launcher.py`
+3. Run the launcher: `python main.py --launcher`
 
 ### Docker Installation
 1. Clone the repository
@@ -68,7 +68,7 @@ pip install -r requirements.txt
 ## Usage
 
 ### Launcher
-Run `python launcher.py` to open the main launcher which provides access to all tools:
+Run `python main.py --launcher` to open the main launcher which provides access to all tools:
 - Symmetric Encryption
 - Asymmetric Encryption
 - File Browser
@@ -98,20 +98,31 @@ Run `python launcher.py` to open the main launcher which provides access to all 
 
 ```
 /
-├── keys/              # Encryption keys
-├── data/              # Data directory
-│   ├── encrypted/     # Encrypted files
-│   ├── decrypted/     # Decrypted files
-│   ├── signatures/    # Digital signatures
-│   └── logs/          # Operation logs
-├── Dockerfile         # Docker configuration
-├── docker-compose.yml # Docker Compose configuration
-├── main.py            # Symmetric encryption app
-├── asym.py            # Asymmetric encryption app
-├── file_browser.py    # File management app
-├── file_manager.py    # File management library
-├── tamper_with_encryption.py # Tampering tool
-└── launcher.py        # Main application launcher
+├── src/                # Source code directory
+│   ├── core/           # Core application modules
+│   │   ├── asym.py     # Asymmetric encryption logic
+│   │   └── main.py     # Main application logic
+│   ├── crypto/         # Cryptographic modules
+│   │   ├── key_manager.py  # Key management
+│   │   ├── symmetric.py    # Symmetric encryption
+│   │   └── utils.py        # Crypto utilities
+│   ├── gui/            # GUI modules
+│   │   ├── encryption_gui.py  # Encryption GUI
+│   │   ├── file_browser.py    # File browser GUI
+│   │   └── launcher.py        # Launcher GUI
+│   └── utils/          # Utility modules
+│       ├── file_manager.py    # File management
+│       └── tamper_with_encryption.py  # Tampering tool
+├── keys/               # Encryption keys
+├── data/               # Data directory
+│   ├── encrypted/      # Encrypted files
+│   ├── decrypted/      # Decrypted files
+│   ├── signatures/     # Digital signatures
+│   └── logs/           # Operation logs
+├── Dockerfile          # Docker configuration
+├── docker-compose.yml  # Docker Compose configuration
+├── main.py             # Main entry point
+└── requirements.txt    # Python dependencies
 ```
 
 ## Docker Usage
