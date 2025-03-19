@@ -11,7 +11,7 @@ class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Encryption Toolkit Launcher")
-        self.root.geometry("600x400")
+        self.root.geometry("900x600")
         
         style = Style(theme='superhero')
         
