@@ -1,261 +1,46 @@
+"""
+Main application file for the encryption security tool.
+"""
+
 import os
 import subprocess
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, simpledialog
-import hashlib
-import datetime
+from tkinter import filedialog, messagebox, ttk
+import logging
+from pathlib import Path
 
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Util import Counter
-from Crypto.Util.Padding import pad, unpad
-from Crypto.Protocol.KDF import PBKDF2
 from ttkbootstrap import Style
 
-# Constants
-SECRET_KEY_PATH = "keys/secret.key"
-SALT_PATH = "keys/salt"
-CONFIG_PATH = "config"
+# Import from crypto module
+from crypto.key_manager import generate_key, load_key
+from crypto.symmetric import init_cipher, encrypt_file, decrypt_file
+from crypto.utils import open_file, setup_logging, get_app_config, save_app_config
 
 
-def generate_key(key_size=32):  # Default to AES-256
-    try:
-        if not os.path.exists("keys"):
-            os.makedirs("keys")
-
-        # Generate a random salt
-        salt = get_random_bytes(16)
-        with open(SALT_PATH, "wb") as salt_file:
-            salt_file.write(salt)
-
-        # Get password from user
-        password_window = tk.Toplevel()
-        password_window.title("Password Protection")
-        password_window.geometry("300x150")
-
-        password_var = tk.StringVar()
-        confirm_var = tk.StringVar()
-
-        ttk.Label(password_window, text="Enter password:").pack(pady=5)
-        password_entry = ttk.Entry(password_window, show="*", textvariable=password_var)
-        password_entry.pack(pady=5)
-
-        ttk.Label(password_window, text="Confirm password:").pack(pady=5)
-        confirm_entry = ttk.Entry(password_window, show="*", textvariable=confirm_var)
-        confirm_entry.pack(pady=5)
-
-        def submit_password():
-            if password_var.get() == confirm_var.get():
-                if len(password_var.get()) < 8:
-                    messagebox.showerror("Error", "Password must be at least 8 characters")
-                    return
-
-                # Generate key using PBKDF2
-                password = password_var.get().encode()
-                key = PBKDF2(password, salt, dkLen=key_size, count=1000000)  # High iteration count for security
-
-                save_key(key)
-
-                # Save key size to config
-                with open(CONFIG_PATH, "w") as config:
-                    config.write(f"KEY_SIZE={key_size}\n")
-
-                messagebox.showinfo("Success", "Key generated successfully!")
-                password_window.destroy()
-            else:
-                messagebox.showerror("Error", "Passwords do not match")
-
-        ttk.Button(password_window, text="Generate Key", command=submit_password).pack(pady=10)
-
-        password_window.transient(password_window.master)
-        password_window.grab_set()
-        password_window.wait_window()
-
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to generate key: {str(e)}")
-
-
-def save_key(key):
-    with open(SECRET_KEY_PATH, "wb") as key_file:
-        key_file.write(key)
-
-
-def load_key(password=None):
-    if password is None:
-        password = tk.simpledialog.askstring("Password", "Enter key password:", show="*")
-        if not password:
-            return None
-
-    try:
-
-        with open(SALT_PATH, "rb") as salt_file:
-            salt = salt_file.read()
-
-        # Get key size from config
-        key_size = 32  # Default to AES-256
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r") as config:
-                for line in config:
-                    if line.startswith("KEY_SIZE="):
-                        key_size = int(line.strip().split("=")[1])
-                        break
-
-        derived_key = PBKDF2(password.encode(), salt, dkLen=key_size, count=1000000)
-
-        with open(SECRET_KEY_PATH, "rb") as key_file:
-            stored_key = key_file.read()
-
-        if derived_key == stored_key:
-            return derived_key
-        else:
-            messagebox.showerror("Error", "Incorrect password")
-            return None
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to load key: {str(e)}")
-        return None
+# Set up logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 def launch_asymmetric_window():
-    script_path = "asym.py"
-    subprocess.Popen(["python", script_path])
-
-
-# Optimized for windows
-def open_file(filename):
-    if sys.platform == "win32":
-        os.startfile(filename)
-    else:
-        opener = "open" if sys.platform == "darwin" else "xdg-open"
-        subprocess.call([opener, filename])
-
-
-def open_and_read_file(filename):
-    with open(filename, "rb") as f:
-        return f.read()
-
-
-def save_file(filename, data):
-    with open(filename, "wb") as f:
-        f.write(data)
-
-
-def encrypt_file(cipher, read_filename, save_filename, mode, nonce=None, iv=None):
-    block = open_and_read_file(read_filename)
-    header = block[:54]
-    body = block[54:]
-
-    log_file = f"{save_filename}.log"
-    with open(log_file, "w") as log:
-        log.write(f"Encryption mode: {mode}\n")
-        log.write(f"Original file: {read_filename}\n")
-        log.write(f"Encrypted file: {save_filename}\n")
-        log.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
-
-    if mode == AES.MODE_CTR:
-        ciphertext = cipher.encrypt(body)
-        result = header + nonce + ciphertext
-    elif mode == AES.MODE_CBC:
-        padded_body = pad(body, AES.block_size)
-        ciphertext = cipher.encrypt(padded_body)
-        result = header + iv + ciphertext
-    elif mode == AES.MODE_GCM:
-        ciphertext, tag = cipher.encrypt_and_digest(body)
-        result = header + nonce + tag + ciphertext
-    else:  # AES.MODE_ECB
-        padded_body = pad(body, AES.block_size)
-        ciphertext = cipher.encrypt(padded_body)
-        result = header + ciphertext
-
-    # Create a checksum of the encrypted data for integrity verification
-    checksum = hashlib.sha256(result).digest()
-    with open(f"{save_filename}.checksum", "wb") as f:
-        f.write(checksum)
-
-    save_file(save_filename, result)
-
-
-def decrypt_file(cipher, read_filename, decrypted_filename, mode, key):
+    """Launch the asymmetric encryption window."""
     try:
-        block = open_and_read_file(read_filename)
-        header = block[:54]  # header size is fixed at 54 bytes
-
-        checksum_file = f"{read_filename}.checksum"
-        if os.path.exists(checksum_file):
-            with open(checksum_file, "rb") as f:
-                stored_checksum = f.read()
-
-            calculated_checksum = hashlib.sha256(block).digest()
-            if calculated_checksum != stored_checksum:
-                messagebox.showwarning(
-                    "Security Warning", "File checksum does not match! The file may have been tampered with."
-                )
-
-        if mode == AES.MODE_CTR:
-            nonce = block[54:62]  # Extract the nonce (8 bytes)
-            encrypted_data = block[62:]  # The rest is encrypted data
-            ctr = Counter.new(64, prefix=nonce)
-            cipher = AES.new(key, mode, counter=ctr)  # Re-initialize cipher with correct counter
-            decrypted_body = cipher.decrypt(encrypted_data)
-        elif mode == AES.MODE_CBC:
-            iv = block[54:70]  # Extract the IV (16 bytes)
-            encrypted_data = block[70:]
-            cipher = AES.new(key, mode, iv=iv)  # Re-initialize cipher with correct IV
-            decrypted_body = cipher.decrypt(encrypted_data)
-            decrypted_body = unpad(decrypted_body, AES.block_size)
-        elif mode == AES.MODE_GCM:
-            nonce = block[54:70]  # Extract the nonce (16 bytes)
-            tag = block[70:86]  # Extract the tag (16 bytes)
-            encrypted_data = block[86:]
-            cipher = AES.new(key, mode, nonce=nonce)
-            try:
-                decrypted_body = cipher.decrypt_and_verify(encrypted_data, tag)
-            except ValueError:
-                messagebox.showerror("Security Error", "Authentication failed! The file has been tampered with.")
-                return False
-        else:  # AES.MODE_ECB
-            encrypted_data = block[54:]
-            decrypted_body = cipher.decrypt(encrypted_data)
-            decrypted_body = unpad(decrypted_body, AES.block_size)
-
-        result = header + decrypted_body
-        save_file(decrypted_filename, result)
-
-        # Log decryption information for security audit
-        log_file = f"{decrypted_filename}.log"
-        with open(log_file, "w") as log:
-            log.write(f"Decryption mode: {mode}\n")
-            log.write(f"Encrypted file: {read_filename}\n")
-            log.write(f"Decrypted file: {decrypted_filename}\n")
-            log.write(f"Timestamp: {datetime.datetime.now().isoformat()}\n")
-
-        return True
+        script_path = "asym.py"
+        subprocess.Popen([sys.executable, script_path])
+        logger.info("Launched asymmetric encryption window")
     except Exception as e:
-        print(f"An error occurred: {e}")
-        messagebox.showerror("Error", f"Decryption failed: {str(e)}")
-        return False
-
-
-def init_cipher(key, mode, counter=None, iv=None, nonce=None):
-    if mode == AES.MODE_CTR and counter is None:
-        raise ValueError("CTR mode requires a counter")
-    elif mode == AES.MODE_CBC and iv is None:
-        raise ValueError("CBC mode requires an initialization vector (IV)")
-    elif mode == AES.MODE_GCM and nonce is None:
-        raise ValueError("GCM mode requires a nonce")
-
-    if mode == AES.MODE_CTR:
-        return AES.new(key, mode, counter=counter)
-    elif mode == AES.MODE_CBC:
-        return AES.new(key, mode, iv=iv)
-    elif mode == AES.MODE_GCM:
-        return AES.new(key, mode, nonce=nonce)
-    else:  # AES.MODE_ECB
-        return AES.new(key, mode)
+        logger.error(f"Failed to launch asymmetric window: {str(e)}")
+        messagebox.showerror("Error", f"Failed to launch asymmetric encryption: {str(e)}")
 
 
 def main_gui():
+    """Initialize and run the main GUI application."""
     def on_encrypt():
+        """Handle the encrypt button click event."""
         mode_choice = aes_mode_var.get()
 
         if mode_choice not in mode_mapping:
@@ -275,86 +60,99 @@ def main_gui():
         if key is None:
             return
 
-        if mode == AES.MODE_CTR:
-            nonce = get_random_bytes(8)  # Generate a new nonce for each encryption
-            ctr = Counter.new(64, prefix=nonce)
-            c_encrypt = init_cipher(key, mode, counter=ctr)
-            encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, nonce=nonce)
-        elif mode == AES.MODE_CBC:
-            iv = get_random_bytes(16)  # Generate a new IV for each encryption
-            c_encrypt = init_cipher(key, mode, iv=iv)
-            encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, iv=iv)
-        elif mode == AES.MODE_GCM:
-            nonce = get_random_bytes(16)  # Generate a new nonce for each encryption
-            c_encrypt = init_cipher(key, mode, nonce=nonce)
-            encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, nonce=nonce)
-        else:  # AES.MODE_ECB
-            c_encrypt = init_cipher(key, mode)
-            encrypt_file(c_encrypt, read_filename, encrypted_filename, mode)
+        try:
+            if mode == AES.MODE_CTR:
+                nonce = get_random_bytes(8)  # Generate a new nonce for each encryption
+                ctr = Counter.new(64, prefix=nonce)
+                c_encrypt = init_cipher(key, mode, counter=ctr)
+                encrypt_success = encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, nonce=nonce)
+            elif mode == AES.MODE_CBC:
+                iv = get_random_bytes(16)  # Generate a new IV for each encryption
+                c_encrypt = init_cipher(key, mode, iv=iv)
+                encrypt_success = encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, iv=iv)
+            elif mode == AES.MODE_GCM:
+                nonce = get_random_bytes(16)  # Generate a new nonce for each encryption
+                c_encrypt = init_cipher(key, mode, nonce=nonce)
+                encrypt_success = encrypt_file(c_encrypt, read_filename, encrypted_filename, mode, nonce=nonce)
+            else:  # AES.MODE_ECB
+                c_encrypt = init_cipher(key, mode)
+                encrypt_success = encrypt_file(c_encrypt, read_filename, encrypted_filename, mode)
 
-        open_file(encrypted_filename)
-
-        messagebox.showinfo("Success", "Encryption Successful!")
-        lbl_result.config(text="Encryption Successful!", foreground="green")
+            if encrypt_success:
+                open_file(encrypted_filename)
+                messagebox.showinfo("Success", "Encryption Successful!")
+                lbl_result.config(text="Encryption Successful!", foreground="green")
+                
+                # Update last used mode in config
+                config = get_app_config()
+                config["default_mode"] = filename_mapping[mode_choice]
+                save_app_config(config)
+        except Exception as e:
+            logger.error(f"Encryption failed: {str(e)}")
+            messagebox.showerror("Error", f"Encryption failed: {str(e)}")
+            lbl_result.config(text=f"Encryption failed: {str(e)}", foreground="red")
 
     def on_decrypt():
+        """Handle the decrypt button click event."""
         mode_choice = aes_mode_var.get()
         if mode_choice not in mode_mapping:
             messagebox.showerror("Error", "Invalid mode selection")
             return
 
         mode = mode_mapping[mode_choice]
-        decrypted_filename = f"decrypted_file.bmp"
+        decrypted_filename = "decrypted_file.bmp"
         read_filename = filedialog.askopenfilename(title="Select the file to Decrypt", filetypes=[("All files", "*.*")])
         if not read_filename:
             return
 
         try:
-            if "_ECB" in read_filename:
-                detected_mode = "ECB"
-            elif "_CTR" in read_filename:
-                detected_mode = "CTR"
-            elif "_CBC" in read_filename:
-                detected_mode = "CBC"
-            elif "_GCM" in read_filename:
-                detected_mode = "GCM"
-            else:
-                detected_mode = filename_mapping[mode_choice]
+            # Try to detect encryption mode from filename
+            detected_mode = None
+            for mode_id, mode_name in filename_mapping.items():
+                if f"_{mode_name}" in read_filename:
+                    detected_mode = mode_name
+                    break
 
-            if detected_mode != filename_mapping[mode_choice]:
+            if detected_mode and detected_mode != filename_mapping[mode_choice]:
                 if not messagebox.askyesno(
                     "Mode Mismatch Warning",
                     f"The file appears to be encrypted with {detected_mode}, but you selected {filename_mapping[mode_choice]}. Continue anyway?",
                 ):
                     return
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to detect encryption mode: {str(e)}")
 
         key = load_key()
         if key is None:
             return
 
-        # Set up decryption parameters based on mode
-        if mode == AES.MODE_CTR:
-            # For CTR mode, nonce is extracted during decryption
-            c_decrypt = init_cipher(key, mode, counter=Counter.new(64))  # Will be reinitialized during decryption
-        elif mode == AES.MODE_CBC:
-            # For CBC mode, IV is extracted during decryption
-            c_decrypt = AES.new(key, mode, iv=b"\0" * 16)  # Will be reinitialized during decryption
-        elif mode == AES.MODE_GCM:
-            # For GCM mode, nonce is extracted during decryption
-            c_decrypt = AES.new(key, mode, nonce=b"\0" * 16)  # Will be reinitialized during decryption
-        else:  # AES.MODE_ECB
-            c_decrypt = init_cipher(key, mode)
+        try:
+            # Set up decryption parameters based on mode
+            if mode == AES.MODE_CTR:
+                # For CTR mode, nonce is extracted during decryption
+                c_decrypt = init_cipher(key, mode, counter=Counter.new(64))  # Will be reinitialized during decryption
+            elif mode == AES.MODE_CBC:
+                # For CBC mode, IV is extracted during decryption
+                c_decrypt = AES.new(key, mode, iv=b"\0" * 16)  # Will be reinitialized during decryption
+            elif mode == AES.MODE_GCM:
+                # For GCM mode, nonce is extracted during decryption
+                c_decrypt = AES.new(key, mode, nonce=b"\0" * 16)  # Will be reinitialized during decryption
+            else:  # AES.MODE_ECB
+                c_decrypt = init_cipher(key, mode)
 
-        decryption_successful = decrypt_file(c_decrypt, read_filename, decrypted_filename, mode, key)
-        if not decryption_successful:
-            lbl_result.config(text="Decryption failed.", foreground="red")
-        else:
-            open_file(decrypted_filename)  # Only open the file if decryption was successful
-            lbl_result.config(text="Decryption successful!", foreground="green")
+            decryption_successful = decrypt_file(c_decrypt, read_filename, decrypted_filename, mode, key)
+            if not decryption_successful:
+                lbl_result.config(text="Decryption failed.", foreground="red")
+            else:
+                open_file(decrypted_filename)  # Only open the file if decryption was successful
+                lbl_result.config(text="Decryption successful!", foreground="green")
+        except Exception as e:
+            logger.error(f"Decryption failed: {str(e)}")
+            messagebox.showerror("Error", f"Decryption failed: {str(e)}")
+            lbl_result.config(text=f"Decryption failed: {str(e)}", foreground="red")
 
     def show_security_info():
+        """Display security information dialog."""
         info_window = tk.Toplevel()
         info_window.title("Security Information")
         info_window.geometry("500x400")
@@ -396,6 +194,7 @@ Best Practices:
 
         ttk.Button(info_window, text="Close", command=info_window.destroy).pack(pady=10)
 
+    # Initialize the main window
     root = tk.Tk()
     root.title("Advanced Encryption / Decryption Tool")
     style = Style(theme="superhero")
@@ -415,7 +214,7 @@ Best Practices:
 
     # Button to generate key with selected key size
     btn_generate_key_iv = ttk.Button(
-        app_frame, text="Generate Key", command=lambda: generate_key(key_size_var.get()), style="info.Outline.TButton"
+        app_frame, text="Generate Key", command=lambda: generate_key(root, key_size_var.get()), style="info.Outline.TButton"
     )
     btn_generate_key_iv.grid(column=0, row=1, columnspan=2, sticky=tk.E + tk.W, pady=10)
 
@@ -432,7 +231,6 @@ Best Practices:
     mode_frame.grid(column=0, row=2, columnspan=2, sticky=tk.E + tk.W, pady=10)
 
     mode_mapping = {"1": AES.MODE_ECB, "2": AES.MODE_CTR, "3": AES.MODE_CBC, "4": AES.MODE_GCM}
-
     filename_mapping = {"1": "ECB", "2": "CTR", "3": "CBC", "4": "GCM"}
 
     for idx, (mode, val) in enumerate(aes_mode_options.items()):
@@ -496,7 +294,21 @@ Best Practices:
     app_frame.columnconfigure(0, weight=1)
     app_frame.columnconfigure(1, weight=1)
 
-    aes_mode_var.set("4")  # Default to GCM (most secure)
+    # Set default mode from config
+    config = get_app_config()
+    default_mode = config.get("default_mode", "GCM")
+    
+    # Find the correct key for the default mode
+    for key, value in filename_mapping.items():
+        if value == default_mode:
+            aes_mode_var.set(key)
+            break
+    
+    if not aes_mode_var.get():
+        aes_mode_var.set("4")  # Default to GCM if not found
+
+    # Check for required directories and files
+    Path("keys").mkdir(exist_ok=True)
 
     root.mainloop()
 
