@@ -4,7 +4,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
-import file_manager
+from src.utils import file_manager
 from ttkbootstrap import Style
 
 class LauncherApp:
@@ -131,28 +131,28 @@ class LauncherApp:
     def launch_symmetric_encryption(self):
         """Launch the symmetric encryption application"""
         try:
-            subprocess.Popen([sys.executable, "main.py"])
+            subprocess.Popen([sys.executable, "-m", "src.core.main"])
         except Exception as e:
             messagebox.showerror("Error", f"Failed to launch symmetric encryption app: {str(e)}")
     
     def launch_asymmetric_encryption(self):
         """Launch the asymmetric encryption application"""
         try:
-            subprocess.Popen([sys.executable, "asym.py"])
+            subprocess.Popen([sys.executable, "-m", "src.core.asym"])
         except Exception as e:
             messagebox.showerror("Error", f"Failed to launch asymmetric encryption app: {str(e)}")
     
     def launch_file_browser(self):
         """Launch the file browser application"""
         try:
-            subprocess.Popen([sys.executable, "file_browser.py"])
+            subprocess.Popen([sys.executable, "-m", "src.gui.file_browser"])
         except Exception as e:
             messagebox.showerror("Error", f"Failed to launch file browser app: {str(e)}")
     
     def launch_tampering_tool(self):
         """Launch the tampering tool"""
         try:
-            subprocess.Popen([sys.executable, "tamper_with_encryption.py", "--gui"])
+            subprocess.Popen([sys.executable, "-m", "src.utils.tamper_with_encryption", "--gui"])
         except Exception as e:
             messagebox.showerror("Error", f"Failed to launch tampering tool: {str(e)}")
 
