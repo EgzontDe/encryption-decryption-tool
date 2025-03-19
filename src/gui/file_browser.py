@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import file_manager
+from src.utils import file_manager
 import datetime
 import shutil
 from ttkbootstrap import Style
@@ -10,7 +10,8 @@ class FileBrowserApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Encryption File Browser")
-        self.root.geometry("900x600")
+        self.root.geometry("800x600")
+        self.root.minsize(800, 600)  # Set minimum size to prevent resizing smaller
         
         # Create the main frame with tabs
         self.notebook = ttk.Notebook(root)

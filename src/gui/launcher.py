@@ -20,7 +20,8 @@ class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Encryption Toolkit Launcher")
-        self.root.geometry("600x400")
+        self.root.geometry("800x600")
+        self.root.minsize(800, 600)  # Set minimum size to prevent resizing smaller
         
         style = Style(theme='superhero')
         
@@ -162,7 +163,7 @@ class LauncherApp:
     def launch_file_browser(self):
         """Launch the file browser application"""
         try:
-            subprocess.Popen([sys.executable, "src/gui/file_browser.py"])
+            subprocess.Popen([sys.executable, "-m", "src.gui.file_browser"])
             logger.info("Launched file browser app")
         except Exception as e:
             logger.error(f"Failed to launch file browser app: {str(e)}")
