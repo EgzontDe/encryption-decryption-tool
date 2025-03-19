@@ -14,7 +14,7 @@ def calculate_checksum(file_path):
             sha256_hash.update(byte_block)
     return sha256_hash.digest()
 
-def tamper_file(file_path, position=None, method="flip", offset=54, backup=True):
+def tamper_file(file_path, position=None, method="flip", offset=None, backup=True):
     """
     Tamper with an encrypted file by modifying specific bytes
     
@@ -22,7 +22,7 @@ def tamper_file(file_path, position=None, method="flip", offset=54, backup=True)
     - file_path: Path to the encrypted file
     - position: Position to tamper with relative to the offset (default: random)
     - method: Tampering method: "flip", "zero", "increment", "random"
-    - offset: Byte offset where the data part begins (after header, default: 54)
+    - offset: Byte offset where the data part begins (default: auto-detect)
     - backup: Whether to create a backup of the original file
     """
     import random
@@ -47,14 +47,43 @@ def tamper_file(file_path, position=None, method="flip", offset=54, backup=True)
     # Get file size
     file_size = len(data)
     
+    # Auto-detect offset based on file type
+    if offset is None:
+        # Check if it's a BMP file
+        if len(data) > 2 and data[:2] == b'BM':
+            # BMP file with 54-byte header + 8-byte metadata
+            offset = 62
+        else:
+            # For other files, assume 8-byte metadata block only
+            offset = 8
+            
+            # Additional detection: look for 'ENCV2' marker for asymmetric encryption
+            if len(data) > 5 and data[:5] == b'ENCV2':
+                # Skip the marker, metadata length (4 bytes), and metadata
+                offset = 5
+                if len(data) > 9:
+                    metadata_len = int.from_bytes(data[5:9], byteorder='big')
+                    offset = 9 + metadata_len
+    
     # Check if the file is large enough to tamper with
     if file_size <= offset:
         raise ValueError(f"File is too small ({file_size} bytes) for tampering with offset {offset}")
     
     # Determine tampering position
     if position is None:
+        # Try to target the encrypted data, not headers or metadata
+        # For symmetric encryption: target after offset
+        # For asymmetric encryption with GCM: try to target after the tag
+        
+        # Look for likely positions of actual encrypted data
+        if offset + 32 < file_size:  # If we have space for nonce + tag
+            # Target data section, assuming metadata, nonce, and possibly tag
+            safe_offset = offset + 32
+        else:
+            safe_offset = offset
+            
         # Random position within the data section
-        position = random.randint(offset, file_size - 1)
+        position = random.randint(safe_offset, file_size - 1)
     else:
         position = offset + position
         
@@ -135,7 +164,10 @@ def tamper_gui():
         try:
             # Get parameters from GUI
             method = method_var.get()
-            offset = int(offset_entry.get())
+            
+            # Get offset if specified
+            offset_str = offset_entry.get()
+            offset = int(offset_str) if offset_str else None
             
             # Get position if specified
             position_str = position_entry.get()
@@ -213,9 +245,8 @@ def tamper_gui():
     method_combobox.grid(column=1, row=0, padx=5, pady=5, sticky="ew")
     
     # Offset
-    ttk.Label(options_frame, text="Header Offset (bytes):").grid(column=0, row=1, sticky="w", padx=5, pady=5)
+    ttk.Label(options_frame, text="Header Offset (blank for auto-detect):").grid(column=0, row=1, sticky="w", padx=5, pady=5)
     offset_entry = ttk.Entry(options_frame)
-    offset_entry.insert(0, "54")
     offset_entry.grid(column=1, row=1, padx=5, pady=5, sticky="ew")
     
     # Position
@@ -258,7 +289,7 @@ if __name__ == "__main__":
     parser.add_argument("--method", choices=["flip", "zero", "increment", "random"], default="flip",
                       help="Tampering method to use")
     parser.add_argument("--position", type=int, help="Position to tamper with (relative to offset)")
-    parser.add_argument("--offset", type=int, default=54, help="Byte offset where the data part begins")
+    parser.add_argument("--offset", type=int, help="Byte offset where the data part begins (auto-detect if not specified)")
     parser.add_argument("--no-backup", action="store_true", help="Disable backup creation")
     parser.add_argument("--restore", action="store_true", help="Restore file from backup")
     
