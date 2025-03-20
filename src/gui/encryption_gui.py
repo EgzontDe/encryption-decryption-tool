@@ -17,6 +17,7 @@ from ttkbootstrap import Style
 from src.crypto.key_manager import generate_key, load_key
 from src.crypto.symmetric import init_cipher, encrypt_file, decrypt_file
 from src.crypto.utils import open_file, get_app_config, save_app_config
+from src.utils.file_manager import save_file, ENCRYPTED_DIR, DECRYPTED_DIR, ensure_directories
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -99,7 +100,11 @@ def main_gui():
             
         # Get the original file extension and generate encrypted filename
         file_base, file_ext = os.path.splitext(read_filename)
-        encrypted_filename = f"encrypted_{filename_mapping[mode_choice]}{file_ext}"
+        filename = f"encrypted_{filename_mapping[mode_choice]}{file_ext}"
+        encrypted_filename = os.path.join(ENCRYPTED_DIR, filename)
+        
+        # Ensure directories exist
+        ensure_directories()
 
         key = load_key()
         if key is None:
@@ -177,7 +182,11 @@ def main_gui():
         try:
             # Determine output file name
             file_base, file_ext = os.path.splitext(read_filename)
-            decrypted_filename = f"decrypted_file{file_ext}"
+            filename = f"decrypted_file{file_ext}"
+            decrypted_filename = os.path.join(DECRYPTED_DIR, filename)
+            
+            # Ensure directories exist
+            ensure_directories()
             
             # Set up decryption parameters based on mode
             if mode == AES.MODE_CTR:
